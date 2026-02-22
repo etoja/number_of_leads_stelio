@@ -158,6 +158,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         CHAT_ID = update.message.chat_id
         logger.info(f"Chat ID: {CHAT_ID}")
     text = update.message.text or ""
+    logger.info(f"MSG [{update.message.chat_id}]: {text[:100]}")
     lead = parse_lead(text)
     if lead:
         key = datetime.now().strftime("%Y-%m-%d")
@@ -170,6 +171,19 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     report = build_report(leads_list, label)
     await update.message.reply_text(report, parse_mode="Markdown")
 
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "📋 *Доступные команды:*\n\n"
+        "/report — отчёт за сегодня\n"
+        "/report 22.02.2026 — за конкретный день\n"
+        "/report 22.02 — за день текущего года\n"
+        "/report 01.02-22.02 — за период\n"
+        "/report месяц — за текущий месяц\n\n"
+        "Автоматический отчёт каждый день в *20:00* по Киеву."
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID is None:
@@ -189,6 +203,7 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("report", cmd_report))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # 18:00 UTC = 20:00 Киев
