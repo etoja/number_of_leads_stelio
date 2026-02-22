@@ -25,6 +25,7 @@ from telegram.ext import (
 
 # ── Настройки ────────────────────────────────────────
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
+REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "18"))  # 18 UTC = 20:00 Киев
 CHAT_ID     = None
 
 logging.basicConfig(
@@ -38,23 +39,39 @@ leads: dict[str, list[dict]] = defaultdict(list)
 
 
 def parse_lead(text: str) -> dict | None:
-    if "Новый лид из META Ads" not in text:
-        return None
-
     def extract(pattern, default="—"):
         m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         return m.group(1).strip() if m else default
 
-    return {
-        "name":     extract(r"Имя[:\s]+(.+)"),
-        "phone":    extract(r"Номер телефона[:\s]+(.+)"),
-        "area":     extract(r"Площадь помещения[:\s]+(.+)"),
-        "location": extract(r"Локация[:\s]+(.+)"),
-        "mount":    extract(r"Как будут крепиться шторы[?\s]*\n?(.+)"),
-        "timing":   extract(r"Когда планируете установку[?\s]*\n?(.+)"),
-        "platform": extract(r"Платформа[:\s]+(.+)"),
-        "date":     datetime.now(),
-    }
+    # META Ads (ApiX-Drive)
+    if "Новый лид из META Ads" in text:
+        return {
+            "name":     extract(r"Имя[:\s]+(.+)"),
+            "phone":    extract(r"Номер телефона[:\s]+(.+)"),
+            "area":     extract(r"Площадь помещения[:\s]+(.+)"),
+            "location": extract(r"Локация[:\s]+(.+)"),
+            "mount":    extract(r"Как будут крепиться шторы[?\s]*\n?(.+)"),
+            "timing":   extract(r"Когда планируете установку[?\s]*\n?(.+)"),
+            "platform": extract(r"Платформа[:\s]+(.+)"),
+            "source":   "META Ads",
+            "date":     datetime.now(),
+        }
+
+    # Tilda (сайт)
+    if "Request details" in text or "Номер_телефону" in text:
+        return {
+            "name":     extract(r"Name[:\s]+(.+)"),
+            "phone":    extract(r"Номер_телефону[:\s]+(.+)"),
+            "area":     extract(r"Площа_приміщення[_\w]*[:\s]+(.+)"),
+            "location": extract(r"Локація[:\s]+(.+)"),
+            "mount":    "—",
+            "timing":   extract(r"Коли_плануєте_встановлення[_\w]*[:\s]+(.+)"),
+            "platform": "Сайт",
+            "source":   "Сайт",
+            "date":     datetime.now(),
+        }
+
+    return None
 
 
 def build_report(leads_list: list[dict], label: str) -> str:
@@ -181,7 +198,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/report 22.02 — за день текущего года\n"
         "/report 01.02-22.02 — за период\n"
         "/report месяц — за текущий месяц\n\n"
-        "Автоматический отчёт каждый день в *20:00* по Киеву."
+        f"Автоматический отчёт каждый день в *{REPORT_HOUR + 2}:00* по Киеву.\n"
+        "(настраивается переменной REPORT\_HOUR\_UTC в Railway)"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -207,7 +225,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # 18:00 UTC = 20:00 Киев
-    app.job_queue.run_daily(send_daily_report, time=time(18, 0), name="daily_report")
+    app.job_queue.run_daily(send_daily_report, time=time(REPORT_HOUR, 0), name="daily_report")
 
     logger.info("Бот запущен")
     app.run_polling()
