@@ -61,6 +61,17 @@ def build_report(leads_list: list[dict], label: str) -> str:
     if not leads_list:
         return f"📭 За {label} заявок не поступало."
 
+    # Дедупликация по номеру телефона
+    seen, unique, duplicates = set(), [], 0
+    for l in leads_list:
+        phone = l["phone"].strip()
+        if phone not in seen:
+            seen.add(phone)
+            unique.append(l)
+        else:
+            duplicates += 1
+    leads_list = unique
+
     total = len(leads_list)
 
     cities: dict[str, int] = defaultdict(int)
