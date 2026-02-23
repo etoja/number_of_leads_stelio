@@ -41,6 +41,30 @@ def esc(text: str) -> str:
         text = text.replace(ch, f'\\{ch}')
     return text
 
+
+# Нормализация городов (синонимы → единое название)
+CITY_MAP = {
+    # Київ
+    "київ": "Київ", "киев": "Київ", "kyiv": "Київ", "kiev": "Київ",
+    # Ірпінь
+    "ірпінь": "Ірпінь", "ирпень": "Ірпінь", "irpin": "Ірпінь", "ірпінь_": "Ірпінь",
+    # Буча
+    "буча": "Буча", "bucha": "Буча",
+    # Бровари
+    "бровари": "Бровари", "бровары": "Бровари", "brovary": "Бровари",
+    # Вишневе
+    "вишневе": "Вишневе", "вишневое": "Вишневе", "vysheve": "Вишневе",
+    # Бориспіль
+    "бориспіль": "Бориспіль", "борисполь": "Бориспіль",
+    # Інше
+    "інше місто": "Інше місто", "інше_місто": "Інше місто",
+    "другой город": "Інше місто", "other": "Інше місто",
+}
+
+def normalize_city(city: str) -> str:
+    key = city.lower().strip().rstrip("_").strip()
+    return CITY_MAP.get(key, city.strip().rstrip("_").strip().title())
+
 # leads = { "2026-02-22": [ {...}, ... ] }
 leads: dict[str, list[dict]] = defaultdict(list)
 
@@ -100,11 +124,11 @@ def build_report(leads_list: list[dict], label: str) -> str:
 
     cities: dict[str, int] = defaultdict(int)
     for l in leads_list:
-        city = re.sub(r"[_\-]", " ", l["location"].lower().strip())
+        city = normalize_city(re.sub(r"[_\-]", " ", l["location"].strip()))
         cities[city] += 1
 
     cities_str = "\n".join(
-        f"  • {esc(c.title())} — {n} ({n/total*100:.0f}%)"
+        f"  • {esc(c)} — {n} ({n/total*100:.0f}%)"
         for c, n in sorted(cities.items(), key=lambda x: -x[1])
     )
 
@@ -206,7 +230,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/report 01.02-22.02 — за период\n"
         "/report месяц — за текущий месяц\n\n"
         f"🕗 Автоматический отчёт каждый день в *{REPORT_HOUR + 2}:00* по Киеву.\n"
-        "_(время меняется переменной REPORT_HOUR_UTC в Railway)_"
+        "_(время меняется переменной REPORT\_HOUR\_UTC в Railway)_"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
