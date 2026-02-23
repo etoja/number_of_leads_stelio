@@ -230,7 +230,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/report 01.02-22.02 — за период\n"
         "/report месяц — за текущий месяц\n\n"
         f"🕗 Автоматический отчёт каждый день в *{REPORT_HOUR + 2}:00* по Киеву.\n"
-        "_(время меняется переменной REPORT\_HOUR\_UTC в Railway)_"
+        "_(время меняется переменной REPORT_HOUR_UTC в Railway)_"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
