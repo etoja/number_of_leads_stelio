@@ -25,7 +25,7 @@ from telegram.ext import (
 
 # ── Настройки ────────────────────────────────────────
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
-REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Киев
+REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "18"))  # 18 UTC = 20:00 Киев
 CHAT_ID     = None
 
 logging.basicConfig(
@@ -222,17 +222,42 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "📋 *Доступные команды:*\n\n"
-        "/report — отчёт за сегодня\n"
-        "/report 22.02.2026 — за конкретный день\n"
-        "/report 22.02 — за день текущего года\n"
-        "/report 01.02-22.02 — за период\n"
-        "/report месяц — за текущий месяц\n\n"
-        f"🕗 Автоматический отчёт каждый день в *{REPORT_HOUR + 2}:00* по Киеву.\n"
-        "_(время меняется переменной REPORT_HOUR_UTC в Railway)_"
-    )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    hour = REPORT_HOUR + 2
+    msg = "📋 *Доступные команды:*\n\n"
+    msg += "/report — отчёт за сегодня\n"
+    msg += "/report 22.02.2026 — за конкретный день\n"
+    msg += "/report 22.02 — за день текущего года\n"
+    msg += "/report 01.02-22.02 — за период\n"
+    msg += "/report месяц — за текущий месяц\n\n"
+    msg += f"🕗 Автоматический отчёт в *{hour}:00* по Киеву\n"
+    msg += f"🕗 Автоматический отчёт в *{hour}:00* по Киеву\n"
+    msg += "Дефолтное время меняется в строке REPORT HOUR UTC в bot.py\n"
+    msg += "Или через переменную REPORT HOUR UTC в Railway"
+
+async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global REPORT_HOUR
+    if not context.args:
+        await update.message.reply_text("Использование: /settime 21\n(21 UTC = 23:00 Київ, 18 UTC = 20:00 Київ)")
+        return
+    try:
+        new_hour = int(context.args[0])
+        if not 0 <= new_hour <= 23:
+            raise ValueError
+        REPORT_HOUR = new_hour
+        # Перепланируем задачу
+        jobs = context.job_queue.get_jobs_by_name("daily_report")
+        for job in jobs:
+            job.schedule_removal()
+        context.job_queue.run_daily(
+            send_daily_report,
+            time=time(REPORT_HOUR, 0),
+            name="daily_report",
+            chat_id=update.message.chat_id,
+        )
+        kyiv_hour = (REPORT_HOUR + 2) % 24
+        await update.message.reply_text(f"✅ Время отчёта изменено на *{kyiv_hour}:00* по Киеву", parse_mode="Markdown")
+    except (ValueError, IndexError):
+        await update.message.reply_text("Ошибка. Пример: /settime 21 (число от 0 до 23, UTC)")
 
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID is None:
@@ -253,6 +278,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("settime", cmd_settime))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # 18:00 UTC = 20:00 Киев
