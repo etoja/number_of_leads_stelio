@@ -126,13 +126,13 @@ def build_report(leads_list: list[dict], label: str) -> str:
             unique.append(l)
         else:
             duplicates += 1
-    leads_list = unique
-    total = len(leads_list)
+
+    total = len(leads_list)        # все заявки включая дубли
+    leads_list = unique            # для статистики только уникальные
 
     cities: dict[str, int] = defaultdict(int)
     for l in leads_list:
         cities[normalize_city(l["location"])] += 1
-
     cities_str = "\n".join(
         f"  • {esc(c)} — {n} ({n/total*100:.0f}%)"
         for c, n in sorted(cities.items(), key=lambda x: -x[1])
