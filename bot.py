@@ -25,7 +25,7 @@ from telegram.ext import (
 
 # ── Настройки ────────────────────────────────────────
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
-REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "23"))  # 23 UTC = 23:00 Киев
+REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Киев
 CHAT_ID     = None
 
 logging.basicConfig(
