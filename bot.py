@@ -34,6 +34,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def esc(text: str) -> str:
+    """Экранирует спецсимволы Markdown."""
+    for ch in ['_', '*', '[', ']', '`']:
+        text = text.replace(ch, f'\\{ch}')
+    return text
+
 # leads = { "2026-02-22": [ {...}, ... ] }
 leads: dict[str, list[dict]] = defaultdict(list)
 
@@ -97,7 +104,7 @@ def build_report(leads_list: list[dict], label: str) -> str:
         cities[city] += 1
 
     cities_str = "\n".join(
-        f"  • {c.title()} — {n} ({n/total*100:.0f}%)"
+        f"  • {esc(c.title())} — {n} ({n/total*100:.0f}%)"
         for c, n in sorted(cities.items(), key=lambda x: -x[1])
     )
 
@@ -106,7 +113,7 @@ def build_report(leads_list: list[dict], label: str) -> str:
         areas[l["area"]] += 1
 
     areas_str = "\n".join(
-        f"  • {a} — {n} ({n/total*100:.0f}%)"
+        f"  • {esc(a)} — {n} ({n/total*100:.0f}%)"
         for a, n in sorted(areas.items(), key=lambda x: -x[1])
     )
 
@@ -115,7 +122,7 @@ def build_report(leads_list: list[dict], label: str) -> str:
         platforms[l["platform"].lower()] += 1
 
     platforms_str = " | ".join(
-        f"{p.upper()}: {c}"
+        f"{esc(p.upper())}: {c}"
         for p, c in sorted(platforms.items(), key=lambda x: -x[1])
     )
 
