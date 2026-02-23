@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import re
 from datetime import datetime, time, timedelta
@@ -17,6 +18,7 @@ from telegram.ext import (
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Київ
 CHAT_ID     = None
+LEADS_FILE  = "leads.json"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -26,6 +28,23 @@ logger = logging.getLogger(__name__)
 
 # leads = { "2026-02-23": [ {...}, ... ] }
 leads: dict[str, list[dict]] = defaultdict(list)
+
+# ── Сохранение / загрузка ──────────────────────────────────────
+def save_leads():
+    data = {}
+    for k, v in leads.items():
+        data[k] = [{**lead, "date": lead["date"].isoformat()} for lead in v]
+    with open(LEADS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+def load_leads():
+    if not os.path.exists(LEADS_FILE):
+        return
+    with open(LEADS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    for k, v in data.items():
+        leads[k] = [{**lead, "date": datetime.fromisoformat(lead["date"])} for lead in v]
+    logger.info(f"Загружено заявок: {sum(len(v) for v in leads.values())}")
 
 # ── Нормализация городов ───────────────────────────────────────
 CITY_MAP = {
@@ -37,6 +56,7 @@ CITY_MAP = {
     "бориспіль": "Бориспіль", "борисполь": "Бориспіль",
     "інше місто": "Інше місто", "інше_місто": "Інше місто",
     "другой город": "Інше місто", "other": "Інше місто",
+    "другой_город": "Інше місто",
 }
 
 def normalize_city(raw: str) -> str:
@@ -55,6 +75,13 @@ def parse_lead(text: str) -> dict | None:
         return m.group(1).strip() if m else default
 
     if "Новый лид из META Ads" in text:
+        # Дата из сообщения ApiX-Drive
+        date_m = re.search(r"Дата Заявки[:\s]+(\d{2}\.\d{2}\.\d{4})", text)
+        if date_m:
+            lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y")
+        else:
+            lead_date = datetime.now()
+
         return {
             "name":     extract(r"Имя[:\s]+(.+)"),
             "phone":    extract(r"Номер телефона[:\s]+(.+)"),
@@ -63,10 +90,16 @@ def parse_lead(text: str) -> dict | None:
             "timing":   extract(r"Когда планируете установку[?\s]*\n?(.+)"),
             "platform": extract(r"Платформа[:\s]+(.+)"),
             "source":   "META Ads",
-            "date":     datetime.now(),
+            "date":     lead_date,
         }
 
     if "Request details" in text or "Номер_телефону" in text:
+        date_m = re.search(r"Дата Заявки[:\s]+(\d{2}\.\d{2}\.\d{4})", text)
+        if date_m:
+            lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y")
+        else:
+            lead_date = datetime.now()
+
         return {
             "name":     extract(r"Name[:\s]+(.+)"),
             "phone":    extract(r"Номер_телефону[:\s]+(.+)"),
@@ -75,7 +108,7 @@ def parse_lead(text: str) -> dict | None:
             "timing":   extract(r"Коли_плануєте_встановлення[\w_]*[:\s]+(.+)"),
             "platform": "Сайт",
             "source":   "Сайт",
-            "date":     datetime.now(),
+            "date":     lead_date,
         }
 
     return None
@@ -182,9 +215,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"MSG [{update.message.chat_id}]: {text[:100]}")
     lead = parse_lead(text)
     if lead:
-        key = datetime.now().strftime("%Y-%m-%d")
+        key = lead["date"].strftime("%Y-%m-%d")
         leads[key].append(lead)
-        logger.info(f"Заявка: {lead['name']} / {lead['location']}")
+        save_leads()
+        logger.info(f"Заявка сохранена: {lead['name']} / {lead['location']} / {key}")
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     leads_list, label = parse_report_args(context.args or [])
@@ -234,12 +268,15 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     report = build_report(leads.get(key, []), label)
     await context.bot.send_message(chat_id=CHAT_ID, text=report, parse_mode="Markdown")
     leads.pop(key, None)
+    save_leads()
     logger.info("Авто-отчёт отправлен")
 
 # ── Main ───────────────────────────────────────────────────────
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не задан!")
+
+    load_leads()
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("report", cmd_report))
