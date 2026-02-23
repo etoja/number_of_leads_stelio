@@ -18,7 +18,7 @@ from telegram.ext import (
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Київ
 CHAT_ID     = None
-LEADS_FILE  = "leads.json"
+LEADS_FILE  = "/app/data/leads.json"
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
