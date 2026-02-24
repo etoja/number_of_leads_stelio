@@ -206,6 +206,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID is None:
         CHAT_ID = update.message.chat_id
         logger.info(f"Chat ID: {CHAT_ID}")
+    sender = update.message.from_user
+    logger.info(f"FROM: {sender.id if sender else 'None'} / {sender.username if sender else 'None'} / is_bot={sender.is_bot if sender else 'None'}")
     text = update.message.text or update.message.caption or ""
     logger.info(f"MSG [{update.message.chat_id}]: {text[:100]}")
     lead = parse_lead(text)
