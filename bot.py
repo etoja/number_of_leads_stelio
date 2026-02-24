@@ -277,12 +277,15 @@ def main():
     app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("settime", cmd_settime))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message, block=False))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.VIA_BOT, handle_message, block=False))
+    app.add_handler(MessageHandler(
+        (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
+        handle_message,
+        block=False
+    ))
     app.job_queue.run_daily(send_daily_report, time=time(REPORT_HOUR, 0), name="daily_report")
 
     logger.info("Бот запущен")
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+    app.run_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     import time as time_module
