@@ -263,12 +263,10 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     save_leads()
     logger.info("Авто-отчёт отправлен")
 
-async def main():
+def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не задан!")
-
     load_leads()
-
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("help", cmd_help))
@@ -279,10 +277,11 @@ async def main():
         block=False
     ))
     app.job_queue.run_daily(send_daily_report, time=time(REPORT_HOUR, 0), name="daily_report")
-
     logger.info("Бот запущен")
-    await app.run_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
+    app.run_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
 
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     import time as time_module
     while True:
@@ -298,3 +297,4 @@ if __name__ == "__main__":
                 loop.close()
             except:
                 pass
+
