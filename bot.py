@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import datetime, time, timedelta
 from collections import defaultdict
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.ext import (
@@ -19,6 +20,7 @@ BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Київ
 CHAT_ID     = None
 LEADS_FILE  = "/app/data/leads.json"
+KYIV_TZ     = ZoneInfo("Europe/Kiev")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -26,7 +28,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# leads = { "2026-02-23": [ {...}, ... ] }
 leads: dict[str, list[dict]] = defaultdict(list)
 
 # ── Сохранение / загрузка ──────────────────────────────────────
@@ -45,6 +46,10 @@ def load_leads():
     for k, v in data.items():
         leads[k] = [{**lead, "date": datetime.fromisoformat(lead["date"])} for lead in v]
     logger.info(f"Загружено заявок: {sum(len(v) for v in leads.values())}")
+
+# ── Часовой пояс ──────────────────────────────────────────────
+def now_kyiv() -> datetime:
+    return datetime.now(KYIV_TZ).replace(tzinfo=None)
 
 # ── Нормализация городов ───────────────────────────────────────
 CITY_MAP = {
@@ -75,13 +80,8 @@ def parse_lead(text: str) -> dict | None:
         return m.group(1).strip() if m else default
 
     if "Новый лид из META Ads" in text:
-        # Дата из сообщения ApiX-Drive
         date_m = re.search(r"Дата Заявки[:\s]+(\d{2}\.\d{2}\.\d{4})", text)
-        if date_m:
-            lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y")
-        else:
-            lead_date = datetime.now()
-
+        lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y") if date_m else now_kyiv()
         return {
             "name":     extract(r"Имя[:\s]+(.+)"),
             "phone":    extract(r"Номер телефона[:\s]+(.+)"),
@@ -95,11 +95,7 @@ def parse_lead(text: str) -> dict | None:
 
     if "Request details" in text or "Номер_телефону" in text:
         date_m = re.search(r"Дата Заявки[:\s]+(\d{2}\.\d{2}\.\d{4})", text)
-        if date_m:
-            lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y")
-        else:
-            lead_date = datetime.now()
-
+        lead_date = datetime.strptime(date_m.group(1), "%d.%m.%Y") if date_m else now_kyiv()
         return {
             "name":     extract(r"Name[:\s]+(.+)"),
             "phone":    extract(r"Номер_телефону[:\s]+(.+)"),
@@ -127,8 +123,8 @@ def build_report(leads_list: list[dict], label: str) -> str:
         else:
             duplicates += 1
 
-    total = len(leads_list)        # все заявки включая дубли
-    leads_list = unique            # для статистики только уникальные
+    total = len(leads_list)
+    leads_list = unique
 
     cities: dict[str, int] = defaultdict(int)
     for l in leads_list:
@@ -141,7 +137,6 @@ def build_report(leads_list: list[dict], label: str) -> str:
     areas: dict[str, int] = defaultdict(int)
     for l in leads_list:
         areas[re.sub(r"[_]+$", "", l["area"]).strip()] += 1
-
     areas_str = "\n".join(
         f"  • {esc(a)} — {n} ({n/total*100:.0f}%)"
         for a, n in sorted(areas.items(), key=lambda x: -x[1])
@@ -179,7 +174,7 @@ def get_leads_for_range(date_from: datetime, date_to: datetime) -> list[dict]:
     return result
 
 def parse_report_args(args: list[str]):
-    today = datetime.now()
+    today = now_kyiv()
     text = " ".join(args).strip().lower()
 
     if not text or text == "сегодня":
@@ -211,7 +206,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID is None:
         CHAT_ID = update.message.chat_id
         logger.info(f"Chat ID: {CHAT_ID}")
-    text = update.message.text or ""
+    text = update.message.text or update.message.caption or ""
     logger.info(f"MSG [{update.message.chat_id}]: {text[:100]}")
     lead = parse_lead(text)
     if lead:
@@ -262,7 +257,7 @@ async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID is None:
         return
-    today = datetime.now()
+    today = now_kyiv()
     key = today.strftime("%Y-%m-%d")
     label = f"сегодня ({today.strftime('%d.%m.%Y')})"
     report = build_report(leads.get(key, []), label)
@@ -282,11 +277,12 @@ def main():
     app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("settime", cmd_settime))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message, block=False))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.VIA_BOT, handle_message, block=False))
     app.job_queue.run_daily(send_daily_report, time=time(REPORT_HOUR, 0), name="daily_report")
 
     logger.info("Бот запущен")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     import time as time_module
