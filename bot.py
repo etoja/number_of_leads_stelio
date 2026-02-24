@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import re
+import asyncio
 from datetime import datetime, time, timedelta
 from collections import defaultdict
 from zoneinfo import ZoneInfo
@@ -17,7 +18,7 @@ from telegram.ext import (
 
 # ── Настройки ─────────────────────────────────────────────────
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
-REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))  # 21 UTC = 23:00 Київ
+REPORT_HOUR = int(os.environ.get("REPORT_HOUR_UTC", "21"))
 CHAT_ID     = None
 LEADS_FILE  = "/app/data/leads.json"
 KYIV_TZ     = ZoneInfo("Europe/Kiev")
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 leads: dict[str, list[dict]] = defaultdict(list)
 
-# ── Сохранение / загрузка ──────────────────────────────────────
 def save_leads():
     data = {}
     for k, v in leads.items():
@@ -47,11 +47,9 @@ def load_leads():
         leads[k] = [{**lead, "date": datetime.fromisoformat(lead["date"])} for lead in v]
     logger.info(f"Загружено заявок: {sum(len(v) for v in leads.values())}")
 
-# ── Часовой пояс ──────────────────────────────────────────────
 def now_kyiv() -> datetime:
     return datetime.now(KYIV_TZ).replace(tzinfo=None)
 
-# ── Нормализация городов ───────────────────────────────────────
 CITY_MAP = {
     "київ": "Київ", "киев": "Київ", "kyiv": "Київ", "kiev": "Київ",
     "ірпінь": "Ірпінь", "ирпень": "Ірпінь", "irpin": "Ірпінь",
@@ -73,7 +71,6 @@ def esc(text: str) -> str:
         text = text.replace(ch, "\\" + ch)
     return text
 
-# ── Парсеры заявок ─────────────────────────────────────────────
 def parse_lead(text: str) -> dict | None:
     def extract(pattern, default="—"):
         m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
@@ -109,7 +106,6 @@ def parse_lead(text: str) -> dict | None:
 
     return None
 
-# ── Построение отчёта ──────────────────────────────────────────
 def build_report(leads_list: list[dict], label: str) -> str:
     if not leads_list:
         return f"📭 За {label} заявок не поступало."
@@ -164,7 +160,6 @@ def build_report(leads_list: list[dict], label: str) -> str:
         f"🌐 *Источники:* {sources_str}"
     )
 
-# ── Парсинг аргументов /report ─────────────────────────────────
 def get_leads_for_range(date_from: datetime, date_to: datetime) -> list[dict]:
     result = []
     current = date_from
@@ -268,8 +263,7 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     save_leads()
     logger.info("Авто-отчёт отправлен")
 
-# ── Main ───────────────────────────────────────────────────────
-def main():
+async def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не задан!")
 
@@ -287,13 +281,13 @@ def main():
     app.job_queue.run_daily(send_daily_report, time=time(REPORT_HOUR, 0), name="daily_report")
 
     logger.info("Бот запущен")
-    app.run_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
+    await app.run_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     import time as time_module
     while True:
         try:
-            main()
+            asyncio.run(main())
         except Exception as e:
             logger.error(f"Ошибка: {e}, перезапуск через 5 сек...")
             time_module.sleep(5)
